@@ -1,0 +1,19 @@
+{
+  "name": "asterisk2slack",
+  "version": "1.0.0",
+  "description": "Send events from asterisk to a slack webhook",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xalakox/asterisk2slack.git"
+  },
+  "author": "Salvador Aceves",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/xalakox/asterisk2slack/issues"
+  },
+  "homepage": "https://github.com/xalakox/asterisk2slack#readme"
+}
