@@ -75,22 +75,25 @@ const processEvents = async ({filename, events}) => {
   }
 }
 
-console.log(`Watching ${logsPath} for changes`);
-fs.watch(logsPath, async (eventType, filename) => {
-  if (filename && monitorCatalog[filename]) {
-    console.log(`${filename} ${eventType}`);
-    const fromTail = await execPromise(`tail ${logsPath}/${filename}`)
-    const events = fromTail.filter(e => !fileStatus[filename].has(e));
-    console.log({ fromTail, events })
-    await processEvents({filename, events });
-    fromTail.forEach(e => fileStatus[filename].add(e))
-  }
-});
-
-const initialRun = () => {
-  Object.keys(fileStatus).forEach(async filename => {
-    fileStatus[filename] = BloomFilter.from(await execPromise(`tail ${logsPath}/${filename}`), 0.001);
-  })
+const startWatching = () => {
+  console.log(`Watching ${logsPath} for changes`);
+  fs.watch(logsPath, async (eventType, filename) => {
+    if (filename && monitorCatalog[filename]) {
+      console.log(`${filename} ${eventType}`);
+      const fromTail = await execPromise(`tail ${logsPath}/${filename}`)
+      const events = fromTail.filter(e => !fileStatus[filename].has(e));
+      await processEvents({filename, events });
+      fromTail.forEach(e => fileStatus[filename].add(e))
+    }
+  });
 }
 
-initialRun()
+const initialRun = async () => {
+  for (const filename of Object.keys(fileStatus)){
+    fileStatus[filename] = new BloomFilter(1e3, 0.01);
+    const initialValues = await execPromise(`tail ${logsPath}/${filename}`);
+    initialValues.forEach(e => fileStatus[filename].add(e));
+  }
+}
+
+initialRun().then(startWatching);
