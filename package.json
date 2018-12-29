@@ -18,6 +18,7 @@
   },
   "homepage": "https://github.com/xalakox/asterisk2slack#readme",
   "dependencies": {
+    "bloom-filters": "^0.5.2",
     "dotenv": "^6.2.0",
     "moment": "^2.23.0",
     "readline": "^1.3.0",

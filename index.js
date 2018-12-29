@@ -3,9 +3,13 @@ const fs = require('fs');
 const request = require('request-promise-native');
 const moment = require('moment')
 const exec = require('child_process').exec;
+const { BloomFilter } = require('bloom-filters');
 
 const logsPath = process.env.LOGSPATH || '/var/log/asterisk';
 const slackWH = process.env.SLACK_WEBHOOK;
+const testMode = Boolean(process.env.TESTMODE);
+
+if (testMode) console.log('running in test mode');
 
 // you should the filenames to be monitored in order to avoid duplicate events
 const monitorCatalog = {
@@ -27,6 +31,10 @@ const monitorCatalog = {
 const fileStatus = {};
 Object.keys(monitorCatalog).forEach(key => fileStatus[key] = []);
 
+const onlyUnique = (value, index, self) =>{ 
+  return self.indexOf(value) === index;
+}
+
 const execPromise = (command) => {
   return new Promise((resolve, reject) => {
     exec(command, (error, stdout, stderr) => {
@@ -34,49 +42,33 @@ const execPromise = (command) => {
           reject(error);
           return;
       }
-        resolve(stdout.trim().split('\n'));
+        resolve(stdout.trim().split('\n').filter(e => e.length>0).filter(onlyUnique));
     });
   });
 }
-
-const arr_diff = (a1, a2) => {
-  var a = [], diff = [];
-  for (var i = 0; i < a1.length; i++) {
-      a[a1[i]] = true;
-  }
-  for (var i = 0; i < a2.length; i++) {
-      if (a[a2[i]]) {
-          delete a[a2[i]];
-      } else {
-          a[a2[i]] = true;
-      }
-  }
-  for (var k in a) {
-      diff.push(k);
-  }
-  return diff;
-}
-
 const processEvents = async ({filename, events}) => {
   if (events.length == 0) return;
   switch (filename) {
     case 'queue_log':
-      for (const [epoch, uniqueId, queueName, channel, eventType, param1, param2, param3] of events.map(e => e.split('|'))) {
+      for (const [epoch, uniqueId, queueName, channel, eventType, param1, param2, param3] of events.filter(e => e.length>0).map(e => e.split('|'))) {
         allparams = { epoch, uniqueId, queueName, channel, eventType, param1, param2, param3 };
         if (monitorCatalog[filename][eventType]) {
-          await request.post(
-            {
+          const payload = {
+            username: 'Phones',
+            icon_emoji: ':phone:',
+            text: monitorCatalog[filename][eventType].text(allparams),
+          };
+          if (!testMode) {
+            await request.post({
               headers : { 'Content-type' : 'application/json' },
               uri: slackWH,
               form : {
-                payload: JSON.stringify({
-                  username: 'Phones',
-                  icon_emoji: ':phone:',
-                  text: monitorCatalog[filename][eventType].text(allparams),
-                })
+                payload: JSON.stringify(payload)
               }
-            },
-          );
+            });
+          } else {
+            console.log({ payload })
+          }
         }
       }
     break;
@@ -88,14 +80,16 @@ fs.watch(logsPath, async (eventType, filename) => {
   if (filename && monitorCatalog[filename]) {
     console.log(`${filename} ${eventType}`);
     const fromTail = await execPromise(`tail ${logsPath}/${filename}`)
-    processEvents({filename, events: arr_diff(fileStatus[filename], fromTail)});
-    fileStatus[filename] = fromTail
+    const events = fromTail.filter(e => !fileStatus[filename].has(e));
+    console.log({ fromTail, events })
+    await processEvents({filename, events });
+    fromTail.forEach(e => fileStatus[filename].add(e))
   }
 });
 
 const initialRun = () => {
   Object.keys(fileStatus).forEach(async filename => {
-    fileStatus[filename] = await execPromise(`tail ${logsPath}/${filename}`);
+    fileStatus[filename] = BloomFilter.from(await execPromise(`tail ${logsPath}/${filename}`), 0.001);
   })
 }
 
