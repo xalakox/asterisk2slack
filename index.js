@@ -81,15 +81,17 @@ fs.watch(logsPath, async (eventType, filename) => {
     console.log(`${filename} ${eventType}`);
     const fromTail = await execPromise(`tail ${logsPath}/${filename}`)
     const events = fromTail.filter(e => !fileStatus[filename].has(e));
-    console.log({ fromTail, events })
+    console.log({ fromTail: fromTail.map(e => [ e, fileStatus[filename].has(e)]), events })
     await processEvents({filename, events });
-    fromTail.forEach(e => fileStatus[filename].add(e))
+    events.forEach(e => fileStatus[filename].add(e))
   }
 });
 
 const initialRun = () => {
   Object.keys(fileStatus).forEach(async filename => {
-    fileStatus[filename] = BloomFilter.from(await execPromise(`tail ${logsPath}/${filename}`), 0.001);
+    fileStatus[filename] = new BloomFilter(1000,0.01);
+    const currentContent = await execPromise(`tail ${logsPath}/${filename}`);
+    currentContent.forEach(e => fileStatus[filename].add(e))
   })
 }
 
